@@ -4,17 +4,27 @@ logger = logging.getLogger()
 debug, info, warn, error, panic = logger.debug, logger.info, logger.warn, logger.error, logger.critical
 
 import collections
+import importlib
 import itertools
+import os.path
 import re
+import sys
 import urllib
 import urllib.parse
 
 
-from .load import common_words, resolutions, search_terms, tag_terms
-info("{} common words".format(len(common_words)) )
-info("resolutions: {}".format(resolutions) )
-info("search_terms: {}".format(search_terms) )
-info("tag_terms: {}".format(tag_terms) )
+sys.path.insert(0, os.path.abspath('.'))
+config_mod_name = 'load'
+search_config	= importlib.import_module(config_mod_name, '.')
+debug(          "Loaded search config from '%s'", str(search_config))
+common_words	= search_config.common_words
+info(		"{} common words".format(len(common_words)) )
+resolutions	= search_config.resolutions
+info(		"resolutions: {}".format(resolutions) )
+search_terms	= search_config.search_terms
+info(		"search_terms: {}".format(search_terms) )
+tag_terms	= search_config.tag_terms
+info(		"tag_terms: {}".format(tag_terms) )
 
 
 def get_year(text, regex=re.compile('[^0-9](?P<year>(19|20)\d\d)')):
@@ -88,16 +98,30 @@ def from_url(text, **kwargs):
     return u
 
 
-def read_file(filename):
+def score_sort(url):
+    """
+    sort key for url objects
+    """
+    return -url.res_score, -url.tag_score
+
+
+def read_file(arg, mode='rU'):
     results = []
-    for order, line in enumerate(open(filename, 'rU'), start=1):
+    if isinstance(arg, str):
+        f = open(arg, mode)
+    else:
+        f = arg
+    for order, line in enumerate(f, start=1):
         # TODO: allow in-place renaming
         results.append( from_url(line.strip(), order=order) )
     return results
 
 
 def sort_urls(filename, counts=None, mincount=2):
-    def sort_key(row):
+    """
+    Returns urls ordered into possible groups, based on common words
+    """
+    def token_sort(row):
         _, tokens = row
         return [ t.lower() for t in tokens ]
     urls = read_file(filename)
@@ -121,11 +145,10 @@ def sort_urls(filename, counts=None, mincount=2):
             t = tc.lower()
             if t in scores:
                 u.pop_score += scores[t]
-        #debug( "{} -> {}".format(u, ' '.join(ts)) )
-    urls_tokens.sort(key=sort_key)
-    for g, uts in itertools.groupby(urls_tokens, key=sort_key):
+    urls_tokens.sort(key=token_sort)
+    for g, uts in itertools.groupby(urls_tokens, key=token_sort):
         score, _ = search_terms.replace_tokens(g)
-        uts = sorted(uts, key=lambda row: (-row[0].res_score, -row[0].tag_score) )
-        n = len(uts)
-        for u, t in uts:
-            yield score, g, u
+        uts = sorted(uts, key=lambda row: score_sort(row[0])) # arrives as generator
+        #n = len(uts)
+        for u, _ in uts:
+            yield -score, u
