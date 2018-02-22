@@ -3,20 +3,23 @@ import fileinput
 import logging
 import sys
 
-from .parser import sort_urls
+from .parser import *
 
 
-def main():
+def main(verbose=__debug__, **options):
     # TODO: argument parsing
-    eol = '\n' # '\x00'
-    verbose = False # __debug__
     if verbose:
         logging.basicConfig(level=logging.DEBUG)
-    score_url = list( sort_urls(fileinput.input()) ) # arrives sorted by logical name
-    if True:
-        score_url.sort()
+    urls = sort_urls(fileinput.input())
     try:
-        print( eol.join(str(u) for score, u in score_url) )
+        for u in urls:
+            print('')
+            print('# %s' % u.filename)
+            if u.year:
+                print('### year: %s' % u.year)
+            if u.tags:
+                print('### identified by: %s' % ', '.join(u.tags))
+            print(str(u))
     except BrokenPipeError:
         sys.exit(0)
     except:

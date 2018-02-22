@@ -2,7 +2,17 @@
 
 from url_sort.word_rank import WordRanker
 
+def read_wordranks(*args, sep='\n\n', **kwargs):
+    contents = []
+    for arg in args:
+        contents += open(arg, 'rU').read().split(sep)
+    return WordRanker(contents, **kwargs)
+
+
+# simplist possible word list:
 common_words	= open('common_words.list', 'rU').read().split()
-resolutions	= WordRanker(open('resolutions.list', 'rU').read().split('\n\n'),     bias=-6)
-search_terms	= WordRanker(open('search_terms.list', 'rU').read().split('\n\n'))
-tag_terms	= WordRanker(open('tag_terms.list', 'rU').read().split('\n\n'),       bias=-1)
+
+# these are double-newline separated lists of lists
+resolutions     = read_wordranks('resolutions.list',  bias=-8)
+search_terms    = read_wordranks('search_terms.list', bias=-5)
+tag_terms       = read_wordranks('tag_terms.list',    bias=-5)
