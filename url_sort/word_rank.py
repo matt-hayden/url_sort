@@ -3,11 +3,18 @@ import logging
 logger = logging.getLogger()
 debug, info, warn, error, panic = logger.debug, logger.info, logger.warn, logger.error, logger.critical
 
+import math
+
+
 class WordRanker:
     def __init__(self, arg=None, **kwargs):
         self.ranks = {}
         if arg:
-            self.import_tiers(arg, **kwargs)
+            if isinstance(arg, str):
+                tiers = [ line for line in arg.split('\n') if line.strip() ]
+            else:
+                tiers = arg
+            self.import_tiers(tiers, **kwargs)
     def __contains__(self, element):
         return element.strip().lower() in self.ranks
     def __len__(self):
@@ -15,14 +22,17 @@ class WordRanker:
     def get_rank(self, token, notfound=None):
         return self.ranks.get(token.lower(), notfound)
     def import_tiers(self, tiers, bias=0):
-        if isinstance(tiers, str):
-            tiers = [ line for line in tiers.split('\n') if line.strip() ]
         tiers = [ t.split() if isinstance(t, str) else t for t in tiers ]
         rank = bias if (0 < bias) else len(tiers)+bias
         ranks = {}
         for tier in tiers:
+            n_subtiers = len(tier)
+            places = 1+round(math.log10(n_subtiers)) if (1 < n_subtiers) else 0.
+            dsubrank = 10**-places
+            subrank = float(rank)
             for t in tier:
-                ranks[t.lower()] = rank
+                ranks[t.lower()] = subrank
+                subrank += dsubrank
             rank -= 1
         self.ranks = ranks
     def replace_tokens(self, tokens, reducer=lambda a,b: a+b, score=0):
@@ -34,4 +44,5 @@ class WordRanker:
                 not_found.append(t)
         return score, not_found
     def __str__(self):
-        return 'WordRanker:\n'+'\n'.join('{}={}'.format(k, v) for k,v in sorted(self.ranks.items()))
+        return 'WordRanker:\n' \
+                +'\n'.join('{}={:.2f}'.format(k, v) for k,v in sorted(self.ranks.items()))
