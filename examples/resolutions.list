@@ -13,7 +13,8 @@ bdrip
 brrip
 6ch
 
-webdl
+960
+webdl web_dl
 webrip
 
 hd
@@ -31,6 +32,7 @@ x264
 mp3
 mp4
 dvdrip
+dvdscr
 rq
 
 sd
@@ -40,6 +42,8 @@ dvb
 
 480p 
 360p
+
+wmv
 
 cam
 hdcam

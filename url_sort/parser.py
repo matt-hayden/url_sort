@@ -10,7 +10,7 @@ import re
 import urllib
 import urllib.parse
 
-from .string_dates import *
+from .string_dates import get_year_parser, current_year
 from .util import *
 from . import loader
 
@@ -19,8 +19,8 @@ config = loader.search_config
 
 class URL:
     def __init__(self, arg, **kwargs):
-        self.year = self.res = self.tags = None
-        self.res_score = self.tag_score = None
+        self.resolutions, self.tags = [], []
+        self.year = self.res_score = self.tag_score = None
         if arg:
             if isinstance(arg, str):
                 self.from_text(arg)
@@ -38,9 +38,8 @@ class URL:
             regex=re.compile("[^a-zA-Z0-9'’]")
         else:
             regex=re.compile("[^a-zA-Z0-9]")
-        words = [ w for w in regex.split(self.filepart) if w ]
         results = []
-        for w in words:
+        for w in filter(None, regex.split(self.filepart)):
             # if several numbers are in this range, the last is picked
             if w.isdigit():
                 if (1970 <= int(w) <= current_year):
@@ -52,7 +51,7 @@ class URL:
         if not self.year:
             self.year, replace_regex = get_year_parser(self.filepart)
             if replace_regex:
-                fp, _ = replace_regex.subn('', self.filepart)
+                fp, _ = replace_regex.subn(' ', self.filepart)
                 results = [ w for w in regex.split(fp) if w ]
         return results
     def tokenize(self, *args, \
@@ -64,12 +63,14 @@ class URL:
         """
         assert not self.res_score
         assert not self.tag_score
-        words0 = self.get_words()
-        self.res_score, words1 = resolutions.replace_tokens(words0, reducer=max)
-        self.tag_score, non_tags = tag_terms.replace_tokens(w for w in words1 if not w.lower() in common_words)
-        if non_tags and (self.title == self.filepart):
-            self.title = ' '.join(non_tags)
-        return non_tags
+        words = self.get_words()
+        self.res_score, self.resolutions, words = resolutions.replace_terms(words, reducer=max)
+        #if common_words:
+        #    words = list(filter(lambda w: w.lower() not in common_words, words))
+        self.tag_score, self.tags, words = tag_terms.replace_terms(words)
+        if words and (self.title == self.filepart):
+            self.title = ' '.join(words)
+        return words
     def __lt__(self, other):
         return str(self) < str(other)
     def from_text(self, text, *args, \
@@ -100,13 +101,12 @@ def read_file(arg, mode='rU'):
         f = arg
     for order, line in enumerate(f, start=1):
         line = line.strip()
-        # TODO: here is a good opportunity to allow in-place renaming
         if line:
             results.append( URL(line, order=order) )
     return results
 
 
-def tokenize_urls(arg, counts=None):
+def tokenize_urls(arg, counts=None, common_words=config.common_words):
     """
     Returns urls ordered into possible groups, based on common words,
     sorted by frequency of those words.
@@ -117,7 +117,8 @@ def tokenize_urls(arg, counts=None):
     for tokens, urls in groupings.items():
         f = len(urls)
         for t in tokens:
-            c[t] += f
+            if not t.isdigit() and not (t.lower() in common_words):
+                c[t] += f
     if __debug__:
         debug("Most frequent words in titles:")
         for (g, word_count) in itertools.groupby(c.most_common(), \
@@ -133,13 +134,13 @@ def tokenize_urls(arg, counts=None):
         return -sum(scores.get(t, 0) for t in tokens)
     return sorted(groupings.items(), key=lambda row: score_sort(row[0]))
 def score_urls(*args, \
-        replace_tokens=config.search_terms.replace_tokens, **kwargs):
+        replace_terms=config.search_terms.replace_terms, **kwargs):
     """
     Returns urls ordered by search relevance
     """
-    def search_key(tokens):
-        score, _ = replace_tokens(tokens)
-        return -score
+    def search_key(tokens, default=0):
+        score, _, _ = replace_terms(tokens)
+        return -(score or default)
     for score, urls in sorted( (search_key(tokens), urls) \
             for tokens, urls in tokenize_urls(*args, **kwargs)):
         for u in urls:

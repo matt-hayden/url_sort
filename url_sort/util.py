@@ -1,6 +1,12 @@
 #! /usr/bin/env python3
 import collections
 import itertools
+import re
+
+
+def case_insensitive_replace(haystack, needle, replacement):
+    splitted = re.split(needle, haystack, flags=re.IGNORECASE)
+    return replacement.join(splitted)
 
 
 def pathsplit(text):
