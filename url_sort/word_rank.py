@@ -9,6 +9,14 @@ import math
 from .util import *
 
 
+def read_wordranks(*args, sep='\n\n', **kwargs):
+    contents = []
+    y = contents.extend
+    for arg in expand_dirs(*args):
+        y(open(arg, 'rU').read().split(sep))
+    return WordRanker(contents, **kwargs)
+
+
 class WordRanker:
     """
     From an iterable of iterables, or newline-separated strings.

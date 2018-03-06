@@ -10,9 +10,9 @@ current_year = datetime.now().year
 
 
 def get_year_parser(text, *args, \
-    YYYYMM      = re.compile('[^0-9](?P<year>(19|20)\d\d)'), \
-    XX_MM_XX    = re.compile('[^\d](\d\d)([._])(\d\d)\\2(\d\d)'), \
-    XXMMXX      = re.compile('[^\d](\d\d)(\d\d)(\d\d)') ):
+    YYYYMM      = re.compile('(?:[^0-9])(?P<year>(19|20)\d\d)'), \
+    XX_MM_XX    = re.compile('(?:[^\d])(\d\d)([._])(\d\d)\\2(\d\d)(?:[^d]|$)'), \
+    XXMMXX      = re.compile('(?:[^\d])(\d\d)(\d\d)(\d\d)(?:[^\d]|$)') ):
     m = YYYYMM.search(text) # only first occurrance is tested
     if m:
         regex = YYYYMM
