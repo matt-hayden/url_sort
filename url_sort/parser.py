@@ -79,7 +79,7 @@ class URL:
                 unquote=urllib.parse.unquote):
         parts = urlsplit(text)
         if remove_remote_pagename is None:
-            if parts.hostname.lower() == 'openload.co':
+            if parts.hostname and parts.hostname.lower() == 'openload.co':
                 remove_remote_pagename = True
         ppath, qfilename = pathsplit(parts.path)
         filepart = filename = urllib.parse.unquote(qfilename)
