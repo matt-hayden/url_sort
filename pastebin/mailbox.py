@@ -10,9 +10,9 @@ import urllib.parse
 
 import requests
 
-import pastebin
+from .pastebin import parse_pastebin_alert
 
-def search_mailbox(host=None, mailbox=None, readonly=True, **kwargs):
+def search_mailbox(host=None, mailbox=None, readonly=True, latest=None, **kwargs):
     creds = kwargs
     with imaplib.IMAP4_SSL(host) as M:
         M.login(**creds)
@@ -24,13 +24,16 @@ def search_mailbox(host=None, mailbox=None, readonly=True, **kwargs):
         rv, [mset] = M.search(None, '(UNSEEN)')
         mset = mset.decode().split()
         if rv == 'OK':
+            if latest:
+                mset = sorted(mset, key=lambda s: -int(s))
+                mset = mset[:latest]
             for mn in mset:
                 debug("Fetching message %s", mn)
                 rv, message_parts = M.fetch(mn, '(RFC822)')
                 if rv == 'OK':
                     envelope, _ = message_parts
                     part_num, content = envelope
-                    yield [ mn, *pastebin.parse_pastebin_alert(content) ]
+                    yield [ mn, *parse_pastebin_alert(content) ]
                 else:
                     error("Message %s disappeared", mn)
         else:
@@ -63,7 +66,7 @@ def apply_filter(key, **creds):
     if to_deleted or to_seen:
         mailbox = creds.pop('mailbox', None)
         with imaplib.IMAP4_SSL(creds.pop('host')) as M:
-            M.login(**creds)
+            M.login(creds.pop('user'), creds.pop('password'))
             if mailbox:
                 rv, [mc_s] = M.select(mailbox=mailbox, readonly=False)
                 if rv:

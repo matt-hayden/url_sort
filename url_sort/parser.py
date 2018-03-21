@@ -7,6 +7,7 @@ import collections
 import itertools
 import math
 import re
+import shlex
 import urllib
 import urllib.parse
 
@@ -29,6 +30,8 @@ class URL:
         self.__dict__.update(d)
     def __str__(self, urlunsplit=urllib.parse.urlunsplit):
         return urlunsplit(self.urlparts)
+    def __hash__(self):
+        return hash(self.urlparts[1:3])
     def get_words(self):
         """
         Tokenizes and strips out year
@@ -54,7 +57,7 @@ class URL:
                 fp, _ = replace_regex.subn(' ', self.filepart)
                 results = [ w for w in regex.split(fp) if w ]
         return results
-    def tokenize(self, *args, \
+    def tokenize(self, \
                 common_words=config.common_words, \
                 resolutions=config.resolutions, \
                 tag_terms=config.tag_terms):
@@ -91,27 +94,38 @@ class URL:
         self.urlparts = parts
         self.title = self.filepart = filepart
         self.filename, self.ext = filename, ext
+    def to_m3u(self, quote=shlex.quote, sep='\n'):
+        lines = []
+        y = lines.append
+        y('# %s %s' %(self.title, ('(%d)' % self.year) if self.year else ''))
+        y('# '+quote(self.filename))
+        y(str(self))
+        return sep.join(lines) if sep else lines
 
 
-def read_file(arg, mode='rU'):
-    results = []
-    if isinstance(arg, str):
-        f = open(arg, mode)
-    else: # assume iterable
-        f = arg
-    for order, line in enumerate(f, start=1):
-        line = line.strip()
-        if line:
-            results.append( URL(line, order=order) )
-    return results
+def _read_files(*args, mode='rU', unique={}):
+    order=0
+    for arg in args:
+        if isinstance(arg, str):
+            f = open(arg, mode)
+        else: # assume iterable
+            f = arg
+        for order, line in enumerate(f, start=order+1):
+            line = line.strip()
+            if line:
+                if (unique is not None) and (line not in unique):
+                    yield URL(line, order=order)
+                    unique[line] = order
+def read_files(*args, **kwargs):
+    return list(_read_files(*args, **kwargs))
 
 
-def tokenize_urls(arg, counts=None, common_words=config.common_words):
+def tokenize_urls(*args, counts=None, common_words=config.common_words):
     """
     Returns urls ordered into possible groups, based on common words,
     sorted by frequency of those words.
     """
-    groupings = groupby(read_file(arg), key=lambda url: \
+    groupings = groupby(read_files(*args), key=lambda url: \
             [t.lower() for t in url.tokenize()] )
     c = counts or collections.Counter()
     for tokens, urls in groupings.items():
