@@ -162,7 +162,7 @@ def score_urls(*args, \
 def sort_urls(*args, order='default', **kwargs):
     def highest_resolution(row):
         url = row[1]
-        return -url.res_score
+        return -(url.res_score or 0)
     def latest(row, current_year=current_year, default_year=current_year-3):
         url = row[1]
         return current_year-(url.year or default_year), url.order

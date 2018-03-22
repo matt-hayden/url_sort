@@ -1,7 +1,7 @@
 from setuptools import find_packages, setup
 
 setup(name='UrlSort',
-      version = "1.0.0",
+      version = "1.0.0b1",
       description='Recognize familiar filename patterns in URLs',
       url='https://github.com/matt-hayden/url_sort',
       maintainer="Matt Hayden (Valenceo, LTD.)",
@@ -10,6 +10,7 @@ setup(name='UrlSort',
       packages=find_packages(),
       entry_points = {
           'console_scripts': [
+              'pastebin_mailbox_refresh=pastebin.cli:main',
               'urlsort=url_sort.cli:main',
               ],
       },
