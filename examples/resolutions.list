@@ -1,15 +1,18 @@
 4k
 2160p
-UltraHD
+UltraHD Ultra_HD
 
-1080p
-FullHD
-aac2
+smartphonevr60 smartphonevr30 smartphonevr
+
+1080p_12000 1080p_6000 1080p 1080
+FullHD Full_HD
+AAC2 AAC2_0
+DD5_1
 
 x265
-aac
+AAC
 bluray
-bdrip
+BDRip_XviD_AC3 bdrip BBRip
 brrip
 6ch
 
@@ -17,12 +20,11 @@ brrip
 webdl web_dl
 webrip
 
-hd
+HD_TS HDTS HDi HD
 hdrip
-hdts
 hdtv
 hq
-720p
+720p 720
 DD5.1
 
 ac3
@@ -30,8 +32,8 @@ h264
 x264
 
 mp3
-mp4
-dvdrip
+mp4 avi_mp4 mkv_mp4 wmv_mp4
+pre_dvdrip dvdrip
 dvdscr
 rq
 
@@ -50,7 +52,7 @@ tvrip
 wmv
 
 cam
-hdcam
+full_hdcam hdcam hqmic
 VHSrip
 
 240p

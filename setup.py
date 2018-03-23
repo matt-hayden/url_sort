@@ -1,7 +1,7 @@
 from setuptools import find_packages, setup
 
 setup(name='UrlSort',
-      version = "1.0.0b1",
+      version = "1.0.0b2",
       description='Recognize familiar filename patterns in URLs',
       url='https://github.com/matt-hayden/url_sort',
       maintainer="Matt Hayden (Valenceo, LTD.)",
@@ -14,6 +14,6 @@ setup(name='UrlSort',
               'urlsort=url_sort.cli:main',
               ],
       },
-      install_requires = [ 'docopt', ],
+      install_requires = [ 'docopt', 'requests', 'tqdm' ],
       zip_safe=True
      )

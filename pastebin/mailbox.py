@@ -2,22 +2,24 @@
 
 import logging
 logger = logging.getLogger(__name__)
-debug, info, warn, error, panic = logging.debug, logging.info, logging.warn, logging.error, logging.critical
+debug, info, warn, error, panic = logger.debug, logger.info, logger.warn, logger.error, logger.critical
 
 import collections
+from datetime import datetime
 import imaplib
 import urllib.parse
 
 import requests
 
+from .util import *
 from .pastebin import parse_pastebin_alert
-import url_sort.parser
+
 
 def search_mailbox(host=None, mailbox=None, latest=None, **kwargs):
     creds = kwargs
     if latest:
         latest = int(latest)
-    assert 0 < latest
+        assert 0 < latest
     with imaplib.IMAP4_SSL(host) as M:
         M.login(**creds)
         if mailbox:
@@ -64,10 +66,12 @@ def apply_filter(key=None, safe=False, **kwargs):
             paste_key   pastebin id
     """
     tri = lambda v: { False: -1, None: 0, True: 1}[bool(v)]
+    unit = "message"
+
     nmatches = 0
     to_seen, to_deleted = set(), set()
     with requests.Session() as session:
-        for pastebin_message in search_mailbox(**kwargs):
+        for pastebin_message in progress(search_mailbox(**kwargs), unit=unit, desc="searching"):
             message_number = pastebin_message.pop('message_number')
             # Move key-values from the attrs list into the dict object
             # If multiple keywords exist (unlikely) only one will survive!
@@ -87,7 +91,7 @@ def apply_filter(key=None, safe=False, **kwargs):
                     nmatches += 1
                     info("%s matches %s", paste, result)
                 message_result = max(message_result, result, key=tri)
-            if message_result == 'url list': # TODO
+            if message_result:
                 to_seen.add(message_number)
             elif message_result is None:
                 debug("Ignoring message number %s", message_number)
@@ -105,13 +109,13 @@ def apply_filter(key=None, safe=False, **kwargs):
                     mc = int(mc_s)
                     debug("%d messages", mc)
             if to_deleted:
-                warn("Deleting %s messages", len(to_deleted))
-                for mn in sorted(to_deleted, key=int):
-                    info("Deleting %s", mn)
+                info("Deleting %s messages", len(to_deleted))
+                for mn in progess(sorted(to_deleted, key=int), unit=unit, desc="deleting"):
+                    debug("Deleting %s", mn)
                     M.store(mn, '+FLAGS', '\\DELETED')
             if to_seen:
                 info("Marking %d messages read", len(to_seen))
-                for mn in sorted(to_seen, key=int):
+                for mn in progress(sorted(to_seen, key=int), unit=unit, desc="marking read"):
                     debug("Marking %s SEEN", mn)
                     M.store(mn, '+FLAGS', '\\SEEN')
     return nmatches, payload
@@ -122,7 +126,7 @@ class FilterBase:
     Abstract. Please override .mailbox_key()
     """
     def __init__(self):
-        self.contents = collections.defaultdict(list)
+        self.contents = { 'm3u': [], 'url list': [], 'onion links': [] }
     def __len__(self):
         return len(self.contents)
     def __bool__(self):
@@ -132,15 +136,16 @@ class DefaultFilter(FilterBase):
     This class contains the logic to distinguish useful paste content from
     spam. 
     """
-    stopwords = '127.0.0.1 powerfiler.com swporn urlin.us'.split()
-    def mailbox_key(self, lines, **kwargs):
+    stopwords = '127.0.0.1 fileshare.rocks powerfiler.com swporn urlin.us'.split()
+    def mailbox_key(self, lines, date=now, **kwargs):
         """
         Intended as an argument for pastebin:mailbox.apply_filter
         """
+        assert isinstance(date, datetime)
         nlinks = 0
         for n, line in enumerate(lines, start=1):
             if ('EXTM3U') in line or ('EXTINF' in line):
-                self.contents['m3u'].append(lines)
+                self.contents['m3u'].append((now-date if date else None, lines))
                 return 'm3u'
             if 'Copy & Paste link' in line:
                 return False
@@ -148,8 +153,8 @@ class DefaultFilter(FilterBase):
             if ('//' in line) or ('http' in line):
                 nlinks += 1
                 if '.onion' in line:
-                    self.contents['tor'].append(lines)
-                    return 'tor'
+                    self.contents['onion links'].append([line for line in lines if line.strip()])
+                    return 'onion links'
                 if 'openload' in line:
                     self.contents['url list'].append(lines)
                     return 'url list'
@@ -157,10 +162,5 @@ class DefaultFilter(FilterBase):
                 debug("stopword caught message")
                 return False
         if nlinks < 1:
-            error("Message has no links")
+            warn("No links found in %d lines", len(lines))
             return False
-    def process_url_lists(self, sep='\n\n', **kwargs):
-        if self.contents.get('url list', None):
-            urls = url_sort.parser.sort_urls(*self.contents['url list'], **kwargs)
-            return sep.join(u.to_m3u() for u in urls)
-        return ''
