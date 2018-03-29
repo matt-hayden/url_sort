@@ -110,7 +110,7 @@ def apply_filter(key=None, safe=False, **kwargs):
                     debug("%d messages", mc)
             if to_deleted:
                 info("Deleting %s messages", len(to_deleted))
-                for mn in progess(sorted(to_deleted, key=int), unit=unit, desc="deleting"):
+                for mn in progress(sorted(to_deleted, key=int), unit=unit, desc="deleting"):
                     debug("Deleting %s", mn)
                     M.store(mn, '+FLAGS', '\\DELETED')
             if to_seen:

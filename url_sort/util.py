@@ -1,5 +1,7 @@
-#! /usr/bin/env python3
+# Intended for 'from .util import *'
+
 import collections
+import functools
 import itertools
 import os, os.path
 import re
@@ -11,12 +13,25 @@ import dateutil.parser
 now = datetime.now(timezone.utc).date()
 current_year = now.year
 
-def mean(iterable):
-    n = s = 0
-    for n, i in enumerate(iterable, start=1):
-        s += i
-    return s/n if n else None
-
+def mean_variance(arg):
+    """
+    Return (mean, sample variance). Standard deviation = sqrt(sample variance)
+    Pass a collections.Counter if you can.
+    """
+    freqs = arg if isinstance(arg, collections.Counter) else collections.Counter(arg)
+    n = sum(freqs.values())
+    if not n:
+        return None, None
+    sxf = sorted(x**2, x, f for x, f in freqs.items())
+    s = ss = 0
+    for x2, x, f in sxf:
+        s += x*f
+        ss += x2*f
+    v = ss-(s**2)/n
+    return s/n, v
+def mean(*args, **kwargs):
+    m, _ = mean_variance(*args, **kwargs)
+    return m
 
 def case_insensitive_replace(haystack, needle, replacement):
     splitted = re.split(needle, haystack, flags=re.IGNORECASE)
@@ -39,7 +54,7 @@ def splitext(text):
 
 def expand_dirs(*args, exts='.list'.split()):
     """
-    One level of recursion
+    One level of recursion. For more, see os.walk().
     """
     for arg in args:
         if os.path.isdir(arg):
@@ -57,9 +72,7 @@ def clean_filename(text, dropchars='/;:<>&'):
 
 def groupby(iterable, key, factory=None):
     def tuplize(arg):
-        if isinstance(arg, list):
-            return tuple(arg)
-        return arg
+        return tuple(arg) if isinstance(arg, list) else arg
     if factory is None:
         factory = collections.OrderedDict()
     keyed = sorted((key(v), v) for v in iterable)
@@ -67,6 +80,7 @@ def groupby(iterable, key, factory=None):
         factory[g] = [ v for (k, v) in kiter ]
     return factory
 
+@functools.lru_cache()
 def parse_date(arg, \
         earliest=datetime(1921, 1, 1).date(), \
         latest=now+timedelta(days=2), \
@@ -97,10 +111,10 @@ def filename_splitter(text):
     st = text
     for regex in wrapme.values():
         st = regex.sub('\257\\2\257', st)
-    st = re.sub('[^a-zA-Z0-9,!?]{2,}', '\257', st)
-    st = re.sub('([.](MKV|MP[34]))([.]|$)', '\257\\1\257\\2', st, re.IGNORECASE)
-    if re.match('[a-z]{2,}', st):
-        st = re.sub('([A-Z.]{3,})[^a-z]', '\257\\1\257\2', st)
+    st = re.compile('[^a-zA-Z0-9,!?]{2,}').sub('\257', st)
+    st = re.compile('([.](AVI|MKV|MP[34]|WMV))([.]|$)').sub('\257\\1\257\\2', st, re.IGNORECASE)
+    if re.compile('[a-z]{2,}').match(st):
+        st = re.compile('([A-Z.]{3,})([^a-z])').sub('\257\\1\257\\2', st)
     return st
 
 def media_filename_splitter(text):
@@ -114,9 +128,10 @@ def media_filename_splitter(text):
     for regex in wrapme.values():
         st = regex.sub('\257\\1\257', st)
     # 1080p, for example
-    st = re.sub('([1-9]\d{2,}[ _]?[pP])([^a-zA-Z0-9]|$)', '\257\\1\257\\2', st)
+    st = re.compile('([1-9]\d{2,}[ _]?[pP])([^a-zA-Z0-9]|$)').sub('\257\\1\257\\2', st)
     return st
 
+@functools.lru_cache()
 def splitter(text):
     # stage 0
     st = compatible_string(text)
@@ -125,11 +140,12 @@ def splitter(text):
     # stage 1
     st = media_filename_splitter(st)
     # decimals and numerals of 6 or more
-    st = re.sub('([^a-zA-Z\257]{6,})', '\257\\1\257', st)
+    st = re.compile('([^a-zA-Z\257]{6,})').sub('\257\\1\257', st)
     if '\257' not in st:
         return [text], 1
     # stage 2
     ts = [ _.strip('._ -') for _ in st.split('\257') ]
+    # expect no \257 from here on
     ts = [ _ for _ in ts if _ ]
     if len(ts) <= 1:
         ts = re.split("[^a-zA-Z0-9'’]+", st)
