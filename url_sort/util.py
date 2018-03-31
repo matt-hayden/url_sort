@@ -13,22 +13,42 @@ import dateutil.parser
 now = datetime.now(timezone.utc).date()
 current_year = now.year
 
+@functools.lru_cache()
+def regex(*args, **kwargs):
+    return re.compile(*args, **kwargs)
+
+class SumOfSquaresCounter:
+    """
+    Statistical parameter collector for Counter() dicts.
+    Some consideration is provided for adding floating point numbers of different
+    magnitude.
+    """
+    def __init__(self, arg=None, **kwargs):
+        if arg:
+            freqs = arg if isinstance(arg, collections.Counter) else collections.Counter(arg)
+            n = self.n = sum(freqs.values())
+            if n:
+                sxf = sorted( (x**2, x, f) for x, f in freqs.items() )
+                s = ss = 0
+                for x2, x, f in sxf:
+                    s += x*f
+                    ss += x2*f
+                self.s = s
+                self.ss = ss
+        self.__dict__.update(kwargs)
+    def __add__(self, other):
+        return SumOfSquaresCounter(ss=self.ss+other.ss, s=self.s+other.s, n=self.n+other.n)
+    def mean_variance(self):
+        if self.n:
+            v = self.ss-(self.s**2)/self.n
+            return self.s/n, v
+        return None, None
 def mean_variance(arg):
     """
     Return (mean, sample variance). Standard deviation = sqrt(sample variance)
     Pass a collections.Counter if you can.
     """
-    freqs = arg if isinstance(arg, collections.Counter) else collections.Counter(arg)
-    n = sum(freqs.values())
-    if not n:
-        return None, None
-    sxf = sorted(x**2, x, f for x, f in freqs.items())
-    s = ss = 0
-    for x2, x, f in sxf:
-        s += x*f
-        ss += x2*f
-    v = ss-(s**2)/n
-    return s/n, v
+    return SumOfSquaresCounter(arg).mean_variance()
 def mean(*args, **kwargs):
     m, _ = mean_variance(*args, **kwargs)
     return m
@@ -67,7 +87,7 @@ def expand_dirs(*args, exts='.list'.split()):
 
 
 def clean_filename(text, dropchars='/;:<>&'):
-    return ''.join('-' if (c in dropchars) else c for c in text.replace(' ', '_'))
+    return ''.join('-' if (c in dropchars) else c for c in compatible_string(text).replace(' ', '_'))
 
 
 def groupby(iterable, key, factory=None):
@@ -80,7 +100,7 @@ def groupby(iterable, key, factory=None):
         factory[g] = [ v for (k, v) in kiter ]
     return factory
 
-@functools.lru_cache()
+@functools.lru_cache(maxsize=1<<10) # Less than 1461 = 4 years
 def parse_date(arg, \
         earliest=datetime(1921, 1, 1).date(), \
         latest=now+timedelta(days=2), \
@@ -104,34 +124,33 @@ def compatible_string(text, \
 
 def filename_splitter(text):
     wrapme = {
-            'bracket': re.compile('(\[)([^\]]+)(\])'),
-            'parens': re.compile('([(])([^)]+)([)])'),
-            'aquote': re.compile("([`])([^']+)(['])"),
+            'bracket': regex('(\[)([^\]]+)(\])'),
+            'parens': regex('([(])([^)]+)([)])'),
+            'aquote': regex("([`])([^']+)(['])"),
             }
     st = text
-    for regex in wrapme.values():
-        st = regex.sub('\257\\2\257', st)
-    st = re.compile('[^a-zA-Z0-9,!?]{2,}').sub('\257', st)
-    st = re.compile('([.](AVI|MKV|MP[34]|WMV))([.]|$)').sub('\257\\1\257\\2', st, re.IGNORECASE)
-    if re.compile('[a-z]{2,}').match(st):
-        st = re.compile('([A-Z.]{3,})([^a-z])').sub('\257\\1\257\\2', st)
+    for x in wrapme.values():
+        st = x.sub('\0\\2\0', st)
+    st = regex('[^a-zA-Z0-9,!?]{2,}').sub('\0', st)
+    st = regex('([.](AVI|MKV|MP[34]|WMV))([.]|$)').sub('\0\\1\0\\2', st, re.IGNORECASE)
+    if regex('[a-z]{2,}').match(st):
+        st = regex('([A-Z.]{3,})([^a-zA-Z0-9])').sub('\0\\1\0\\2', st)
     return st
 
 def media_filename_splitter(text):
     wrapme = {
-            'formats':  re.compile('(MP[34]|[hHxX]264)', re.IGNORECASE),
-            'codecs':   re.compile('((AAC|DD_?\d)_?(\d+([.]\d)?)?)'),
-            'Ultra-HD': re.compile('([A-Z][a-zA-Z]+-HD)'),
-            'HD-TS':    re.compile('(HD-[A-Z]+)'),
+            'formats':  regex('(MP[34]|[hHxX]264)', re.IGNORECASE),
+            'codecs':   regex('((AAC|DD_?\d)_?(\d+([.]\d)?)?)'),
+            'Ultra-HD': regex('([A-Z][a-zA-Z]+-HD)'),
+            'HD-TS':    regex('(HD-[A-Z]+)'),
             }
     st = filename_splitter(text)
-    for regex in wrapme.values():
-        st = regex.sub('\257\\1\257', st)
+    for x in wrapme.values():
+        st = x.sub('\0\\1\0', st)
     # 1080p, for example
-    st = re.compile('([1-9]\d{2,}[ _]?[pP])([^a-zA-Z0-9]|$)').sub('\257\\1\257\\2', st)
+    st = regex('([1-9]\d{2,}[ _]?[pP])([^a-zA-Z0-9]|$)').sub('\0\\1\0\\2', st)
     return st
 
-@functools.lru_cache()
 def splitter(text):
     # stage 0
     st = compatible_string(text)
@@ -140,12 +159,12 @@ def splitter(text):
     # stage 1
     st = media_filename_splitter(st)
     # decimals and numerals of 6 or more
-    st = re.compile('([^a-zA-Z\257]{6,})').sub('\257\\1\257', st)
-    if '\257' not in st:
+    st = regex('([^a-zA-Z\0]{6,})').sub('\0\\1\0', st)
+    if '\0' not in st:
         return [text], 1
     # stage 2
-    ts = [ _.strip('._ -') for _ in st.split('\257') ]
-    # expect no \257 from here on
+    ts = [ _.strip('._ -') for _ in st.split('\0') ]
+    # expect no \0 from here on
     ts = [ _ for _ in ts if _ ]
     if len(ts) <= 1:
         ts = re.split("[^a-zA-Z0-9'’]+", st)
@@ -178,9 +197,9 @@ def get_date_tag(filename_parts):
             continue
         if not 6 <= len(t):
             continue
-        if not re.match('[a-zA-Z]', t):
+        if not regex('[a-zA-Z]').match(t):
             tt = t
-            while tt and tt[0] not in '0123456789':
+            while tt and not tt[0].isdigit():
                 tt = tt[1:]
             try:
                 d = parse_date(tt)

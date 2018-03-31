@@ -3,13 +3,11 @@ from datetime import datetime, timezone
 import email.parser
 import sys
 
-import tqdm
-
 now = datetime.now(timezone.utc)
 
 
 if sys.stderr.isatty():
-    progress = tqdm.tqdm
+    from tqdm import tqdm as progress
 else:
     def progress(arg, **kwargs):
         return arg

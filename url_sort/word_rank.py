@@ -46,7 +46,7 @@ class WordRanker:
             dsubrank = 10**-places
             subrank = float(rank)
             for t in tier:
-                ranks[t.lower().replace('_', '\257')] = subrank
+                ranks[t.lower().replace('_', '\0')] = subrank
                 subrank += dsubrank
             rank -= 1
         self.ranks = ranks
@@ -54,19 +54,19 @@ class WordRanker:
         tiers = [ t.split() if isinstance(t, str) else t for t in tiers ]
         return self._import_tiers(tiers, **kwargs)
     def get_compound_tokens(self):
-        return { t.lower(): score for t, score in self.ranks.items() if ('\257' in t) }
+        return { t.lower(): score for t, score in self.ranks.items() if ('\0' in t) }
     def replace_terms(self, terms, reducer=sum, normalize=True):
         if normalize is True:
             normalize = self.ntiers
         scores_found, not_found = [], []
         compound_tokens = self.get_compound_tokens()
         if compound_tokens:
-            zterms = '\257'.join(terms)
+            zterms = '\0'.join(terms)
             for ct in compound_tokens:
                 if ct in zterms.lower():
                     scores_found.append((compound_tokens[ct], ct))
                     zterms = case_insensitive_replace(zterms, ct, '')
-            terms = [ _.strip() for _ in zterms.split('\257') if _.strip() ]
+            terms = [ _.strip() for _ in zterms.split('\0') if _.strip() ]
         for t in terms:
             if (t in self):
                 scores_found.append((self.get_rank(t), t))
@@ -81,7 +81,7 @@ class WordRanker:
         return r, [ t for _, t in scores_found ], not_found
     def __str__(self):
         return 'WordRanker:\n' \
-                +'\n'.join('{}={:.2f}'.format(k.replace('\257', '\u00A4'), v) for k,v in sorted(self.ranks.items()))
+                +'\n'.join('{}={:.2f}'.format(k.replace('\0', '\u00A4'), v) for k,v in sorted(self.ranks.items()))
 
 
 if __name__ == '__main__':

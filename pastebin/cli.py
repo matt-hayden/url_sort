@@ -14,6 +14,7 @@ Options:
 Output options:
   --list=filename   Input lines are sorted to output
   --text=filename   Unstructured #-commented lines to output
+  --text-age=N      URL matches older than N hours are considered expired [default: 64]
   --m3u=filename    Playlists are concatenated, descending by time
   --m3u-age=N       M3U matches older than N hours are considered expired [default: 8]
   --onion=filename  Logs containing .onion links
@@ -21,7 +22,7 @@ Output options:
 
 DEFAULT_CREDFILE='~/.config/pastebin_mailbox_refresh.json'
 
-import datetime
+from datetime import datetime, timedelta
 import json
 import os, os.path
 import sys
@@ -30,7 +31,9 @@ from docopt import docopt
 
 import pastebin.mailbox
 
-from url_sort.parser import sort_urls
+from url_sort.parser import *
+
+from .persistent_cache import TextArgMemo
 
 def main():
     import logging
@@ -48,43 +51,44 @@ def main():
         latest = options.pop('--latest')
         list_filename = options.pop('--list')
         text_filename = options.pop('--text')
+        text_age = { 'hours': int(options.pop('--text-age')) }
         m3u_filename = options.pop('--m3u')
-        m3u_age = datetime.timedelta(seconds=60*60*int(options.pop('--m3u-age')))
+        m3u_age = { 'hours': int(options.pop('--m3u-age')) }
         onion_filename = options.pop('--onion')
     except:
         print("Invalid option:", file=sys.stdout)
         raise
-    nmatches, result = pastebin.mailbox.apply_filter(latest=latest, safe=safe, **creds)
+    if not isinstance(m3u_age, timedelta):
+        m3u_age = timedelta(**m3u_age)
+    nmatches, results = pastebin.mailbox.apply_filter(latest=latest, safe=safe, **creds)
     if not nmatches:
         print("Zero matches", file=sys.stdout)
         return 1
-    urls = list(sort_urls(*result.contents['url list'], order=order))
-    playlists = [ lines for age, lines in result.contents['m3u'] if age < m3u_age ]
+    urls = list(sort_urls(*results.contents['url list'], order=order))
+    playlists = [ lines for age, lines in results.contents['m3u'] if age < m3u_age ]
     
     
-    if list_filename:
+    if list_filename and urls:
         assert isinstance(list_filename, str)
         lines = []
         for u in sorted(urls, key=lambda u: u.order):
-            # Subclasses overload __str__, and we want the link before
-            # parsing
-            if hasattr(u, 'get_original_url'):
-                lines.append(u.get_original_url())
-            else:
-                lines.append(str(u))
+            lines.append(u._text)
         with open(list_filename, 'w') as fo:
             fo.write('\n'.join(lines))
     if text_filename:
         assert isinstance(text_filename, str)
-        with open(text_filename, 'w') as fo:
-            fo.write('\n\n'.join(u.to_m3u() for u in urls))
-    if m3u_filename:
+        with TextArgMemo(CACHE_DB) as memo:
+            filtered = [ mr for mr in memo.after(text_age) if not isinstance(mr, Exception) ]
+            if filtered:
+                with open(text_filename, 'w') as fo:
+                    fo.write('\n\n'.join(u.to_m3u() for u in filtered))
+    if m3u_filename and playlists:
         assert isinstance(m3u_filename, str)
         with open(m3u_filename, 'w') as fo:
             for lines in playlists:
                 fo.write('\n\n'.join(lines))
-    if onion_filename:
+    if onion_filename and results:
         assert isinstance(onion_filename, str)
         with open(onion_filename, 'w') as fo:
-            for lines in result.contents['onion links']:
+            for lines in results.contents['onion links']:
                 fo.write('\n'.join(lines))

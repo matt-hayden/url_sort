@@ -34,7 +34,7 @@ class URLBase:
     def __lt__(self, other):
         return str(self) < str(other)
 class URL(URLBase):
-    _rippers = 'AMIABLE CPG CTG DIAMOND DRONES EVO GECKOS KLEENEX KTR PLAYNOW RARBG ROVER SEXXX SPARKS VBT VSEX XVID'.split()
+    _rippers = 'AMIABLE CPG CTG DIAMOND DRONES EVO GECKOS KLEENEX KTR PLAYNOW RARBG ROVER SEXXX SPARKS VBT VSEX XVID YIFY'.split()
     def get_words(self):
         return [ str(_) for _ in self.get_word_groups() ]
     def get_word_groups(self):
@@ -50,8 +50,6 @@ class URL(URLBase):
             y = get_year_tag(splitted)
             if y:
                 self.date = datetime(y, 1, 1).date()
-        #debug("%s -> %s", self.filepart, splitted)
-        #return [ str(_) for _ in splitted ]
         return splitted
     def tokenize(self, \
                 common_words=config.common_words, \
@@ -77,10 +75,7 @@ class URL(URLBase):
             self.resolutions.extend(rs)
             x, ts, words = tag_terms.replace_terms(words)
             if x:
-                if (tag_score is None):
-                    tag_score = x
-                else:
-                    tag_score += x
+                tag_score = (tag_score or 0)+x
             self.tags.extend(ts)
             word_groups.extend(w for w in words if w)
         if not word_groups:
@@ -102,21 +97,26 @@ class URL(URLBase):
                 remove_remote_pagename=None, \
                 urlsplit=urllib.parse.urlsplit, \
                 unquote=urllib.parse.unquote):
-        parts = urlsplit(text)
-        ppath, qfilename = pathsplit(parts.path)
+        parts = self.urlparts = urlsplit(text)
+        _, qfilename = pathsplit(parts.path)
         filepart = filename = urllib.parse.unquote(qfilename)
         ext = None
         if '.' in filename:
             filepart, ext = splitext(filename)
-            if remove_remote_pagename:
-                parts = parts._replace(path=ppath) # unsupported?
-        self.urlparts = parts
+        else:
+            # fake extensions
+            i = filename.rfind('_')
+            if (i != -1):
+                i = i - len(filename)
+                if i in (-3, -4):
+                    filepart = filename[:i]
+                    ext = filename[i:]
         self.title = self.filepart = filepart
         self.filename, self.ext = filename.replace('/', '-'), ext
     def to_m3u(self, quote=shlex.quote, sep='\n'):
         lines = []
         y = lines.append
         y( '# %s %s' %(self.title, ('(%d)' % self.date.year) if self.date else '') )
-        y( '# '+quote('/'.join(self.tags+[self.filename]).replace('\257', '_')) )
+        y( '# '+quote('/'.join(self.tags+[self.filename]).replace('\0', '_')) )
         y(str(self))
         return sep.join(lines) if sep else lines

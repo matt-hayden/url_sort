@@ -26,22 +26,15 @@ from docopt import docopt
 from .parser import *
 
 
-def main(*FILE):
+def main():
     options = docopt(__doc__, version='1.0.0')
-    FILE = FILE or options.pop('FILE') or [sys.stdin]
+    filenames = options.pop('FILE') or [sys.stdin]
     verbose = options.pop('--verbose')
     if verbose:
         logging.basicConfig(level=logging.DEBUG if (1 < verbose) else logging.INFO )
-    urls = sort_urls(*FILE, order=options.pop('--by'))
-    resolution_freq, tag_freq = collections.Counter(), collections.Counter()
+    urls = sort_urls(*filenames, order=options.pop('--by'))
     try:
-        for u in urls:
-            print('')
-            print(u.to_m3u())
-            if u.resolutions:
-                resolution_freq.update(r.upper() for r in u.resolutions)
-            if u.tags:
-                tag_freq.update(t.capitalize() for t in u.tags)
+        print('\n\n'.join(u.to_m3u() for u in urls))
     except BrokenPipeError:
         sys.exit(0)
     except:

@@ -7,37 +7,57 @@ import collections
 import itertools
 import math
 import urllib.parse
+import sys
 
-from .util import *
+if sys.stderr.isatty():
+    from tqdm import tqdm as progress
+else:
+    def progress(arg, **kwargs):
+        return arg
+
+
 from . import loader
+from .persistent_cache import TextArgMemo
 from .url import URL
+from .util import *
 
 config = loader.search_config
 
 
+CACHE_DB = '~/.cache/urlsort.db'
+
+
 class OpenloadURL(URL):
-    def __init__(self, arg, **kwargs):
-        super().__init__(arg, remove_remote_pagename=True, **kwargs)
-    def get_original_url(self, urlunsplit=urllib.parse.urlunsplit):
-        return urlunsplit(self.urlparts)+'/'+self.filename
+    def from_text(self, *args, **kwargs):
+        super().from_text(*args, **kwargs)
+        ppath, _ = pathsplit(self.urlparts.path)
+        self.urlparts = self.urlparts._replace(path=ppath)
 
 
-def _read_files(*args, mode='rU', unique={}):
+def _read_files(*args, mode='rU'):
     order=0
-    for arg in args:
-        if isinstance(arg, str):
-            f = open(arg, mode)
-        else: # assume iterable
-            f = arg
-        for order, line in enumerate(f, start=order+1):
-            line = line.strip()
-            if line:
-                if (unique is not None) and (line not in unique):
-                    if 'openload.co' in line.lower():
-                        yield OpenloadURL(line, order=order)
-                    else:
-                        yield URL(line, order=order)
-                    unique[line] = order
+    with TextArgMemo(CACHE_DB) as memo:
+        @memo.wrap
+        def urlsort_url(line):
+            if 'openload.co' in line.lower():
+                return OpenloadURL(line)
+            else:
+                return URL(line)
+        for arg in args:
+            if isinstance(arg, str):
+                f = open(arg, mode)
+            else: # assume iterable
+                f = arg
+            for order, line in enumerate(f, start=order+1):
+                line = line.strip()
+                if line:
+                    u = urlsort_url(line)
+                    ### memo-wrapped functions can return a stealthy zombie exception from previous runs.
+                    if isinstance(u, Exception):
+                        raise u
+                    ###
+                    u.order = order
+                    yield u
 def read_files(*args, **kwargs):
     return list(_read_files(*args, **kwargs))
 
@@ -50,7 +70,7 @@ def tokenize_urls(*args, counts=None, common_words=config.common_words):
     def key(url):
         words = url.tokenize()
         return [ t.lower() for t in words ]
-    groupings = groupby(read_files(*args), key=key)
+    groupings = groupby(progress(read_files(*args), unit='lines', desc="Reading %d files" % len(args)), key=key)
     c = counts or collections.Counter()
     for tokens, urls in groupings.items():
         f = len(urls)
@@ -74,8 +94,9 @@ def score_urls(*args, \
     score_by_tags = collections.Counter()
     ntitles = nadult = 0
     # score is negative
+    i = progress(tokenize_urls(*args, **kwargs), unit='lines', desc='parsing') 
     for score, urls in sorted( (search_key(tokens), urls) \
-            for tokens, urls in tokenize_urls(*args, **kwargs)):
+            for tokens, urls in i ):
         ntitles += 1
         nadult += int(any(hasattr(u, 'adult') and u.adult for u in urls))
         for u in urls:
@@ -90,10 +111,11 @@ def score_urls(*args, \
         else:
             info("metadata:")
         info("{}/{} ({:.0%}) adult material".format(nadult, ntitles, nadult/ntitles))
-        fieldw = max(len(t) for t in tags)
-        for k, f in tags.most_common(64):
-            info("\t%s %03d\tavg score=%+.2f", \
-                    k.ljust(min(fieldw, 64)), f, score_by_tags[k]/f)
+        if tags:
+            fieldw = max(len(t) for t in tags)
+            for k, f in tags.most_common(64):
+                info("\t%s %03d\tavg score=%+.2f", \
+                        k.ljust(min(fieldw, 64)), f, score_by_tags[k]/f)
 
 
 # Sort keys:
@@ -144,3 +166,6 @@ def sort_urls(*args, order='default', **kwargs):
     else:
         for _, urls in tokenize_urls(*args, **kwargs):
             yield from urls
+    if __debug__:
+        debug("parse_date() cache_info: %s", parse_date.cache_info())
+        debug("regex() cache_info: %s", regex.cache_info())
